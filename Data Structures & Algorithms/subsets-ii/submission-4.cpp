@@ -1,0 +1,26 @@
+class Solution {
+private:
+    vector<int>* numsPtr;
+    vector<vector<int>> result;
+    vector<int> path;
+
+    void bactrack(int start) {
+        vector<int>& nums = *numsPtr;
+        result.push_back(path);
+        for(int i=start; i<nums.size(); i++) {
+            if(i > start && nums[i] == nums[i-1]) 
+                continue;
+            path.push_back(nums[i]);
+            bactrack(i+1);
+            path.pop_back();
+        }
+
+    }
+public:
+    vector<vector<int>> subsetsWithDup(vector<int>& nums) {
+        std::ranges::sort(nums);
+        numsPtr = &nums;
+        bactrack(0);
+        return result;
+    }
+};

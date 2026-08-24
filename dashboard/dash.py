@@ -289,14 +289,14 @@ TEMPLATE = r"""<!doctype html>
   --r0:#2c2c2a; --r1:#184f95; --r2:#2a78d6; --r3:#6da7ec;
 }
 *{box-sizing:border-box}
-html,body{height:100%}
 body{
   margin:0;background:var(--bg);color:var(--ink);
   font:15px/1.5 system-ui,-apple-system,"Segoe UI",sans-serif;
   -webkit-font-smoothing:antialiased;
-  display:flex;align-items:flex-start;justify-content:center;padding:56px 20px 55vh;
+  display:flex;align-items:flex-start;justify-content:center;padding:56px 20px 0;
 }
 main{width:100%;max-width:600px}
+main::after{content:"";display:block;height:60vh}   /* room to scroll past the end */
 
 .kicker{
   font-size:11.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;

@@ -296,7 +296,7 @@ body{
   display:flex;align-items:flex-start;justify-content:center;padding:56px 20px 0;
 }
 main{width:100%;max-width:600px}
-main::after{content:"";display:block;height:60vh}   /* room to scroll past the end */
+main::after{content:"";display:block;height:18vh}   /* room to scroll past the end */
 
 .kicker{
   font-size:11.5px;font-weight:600;letter-spacing:.11em;text-transform:uppercase;

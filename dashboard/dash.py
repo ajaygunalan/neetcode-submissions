@@ -356,6 +356,7 @@ tr.mine td{color:var(--ink2)}
 .gl{stroke:var(--line);stroke-width:1}
 .tk{fill:var(--muted);font-size:10.5px;font-variant-numeric:tabular-nums}
 .dl{font-size:11px;font-weight:600;font-variant-numeric:tabular-nums}
+.dur{display:block;font-size:11px;color:var(--muted);font-weight:400;margin-top:1px}
 #tip{position:fixed;pointer-events:none;opacity:0;transition:opacity .08s;z-index:9;
      background:var(--card);border:1px solid var(--hair);border-radius:7px;
      padding:7px 10px;font-size:11.5px;color:var(--ink2);
@@ -403,6 +404,7 @@ dl dd.ct{color:var(--muted);min-width:34px;font-size:12.5px}
     <div class="kicker">Pace</div>
     <table id="pace"></table>
     <h3>Where this gets you</h3>
+    <div class="meta" id="since"></div>
     <div class="legend" id="leg"></div>
     <div class="chartwrap"><svg id="chart" role="img"
          aria-label="Projected problems solved once and twice over time"></svg></div>
@@ -427,6 +429,16 @@ function ord(n){const t=n%100;return n+(t>=11&&t<=13?'th':n%10===1?'st':n%10===2
 const mon=(d,l)=>d.toLocaleDateString('en-GB',{month:l?'long':'short',timeZone:'UTC'});
 const fmtLong=d=>`${ord(d.getUTCDate())} ${mon(d,1)} ${d.getUTCFullYear()}`;
 const fmtShort=d=>`${ord(d.getUTCDate())} ${mon(d)}`;
+// calendar months, not 30-day blocks: 8 Jul -> 8 Sep is "2 months", not "2 months 1 day"
+function fmtDur(from,to){
+  if(to<from)[from,to]=[to,from];
+  const anchor=m=>new Date(Date.UTC(from.getUTCFullYear(),from.getUTCMonth()+m,from.getUTCDate()));
+  let mo=(to.getUTCFullYear()-from.getUTCFullYear())*12+to.getUTCMonth()-from.getUTCMonth();
+  if(anchor(mo)>to)mo--;
+  const dd=dayDiff(to,anchor(mo));
+  const a=mo?`${mo} month${mo===1?'':'s'}`:'', b=dd?`${dd} day${dd===1?'':'s'}`:'';
+  return a&&b?`${a} ${b}`:a||b||'0 days';
+}
 const DIFF={E:'Easy',M:'Medium',H:'Hard'};
 
 const solved=P.filter(p=>p.s.length);
@@ -603,9 +615,9 @@ function stack(box, counts, total){
     const r=t[Math.min(t.length-1,Math.round(weeks))];
     return {seen:Math.round(r.seen), done2:Math.round(r.done2)};};
   // when every problem has reached the target, at this pace
-  function finish(newPerWeek, repPerWeek){
+  function finish(newPerWeek, repPerWeek, key){
     for(const r of walk(newPerWeek,repPerWeek,520))
-      if(r.done2>=N-0.5) return addDays(TODAY,r.w*7);
+      if(r[key||'done2']>=N-0.5) return addDays(TODAY,r.w*7);
     return null;
   }
   const PLAN=[5*CFG.weekdayNew, 2*CFG.weekendReps];
@@ -626,6 +638,24 @@ function stack(box, counts, total){
   // whole model, so a REP_TARGET above 2 would need levels in between.
   const SERIES=[['seen','var(--r1)',CFG.levelWords[1].replace(/^Solved /,'')],
                 ['done2','var(--r2)',CFG.levelWords[REP_TARGET].replace(/^Solved /,'')]];
+  // What actually happened, week by week from the first solve to today. The
+  // chart shows this before it shows any projection -- the past is measured,
+  // so it is the only part of the line that is not a guess.
+  const hist=(()=>{
+    const out=[], span=dayDiff(TODAY,START);
+    for(let off=0; off<=span; off+=7) out.push(addDays(START,off));
+    if(dayDiff(TODAY,out[out.length-1])) out.push(TODAY);
+    return out.map(d=>{
+      let seen=0,done2=0;
+      for(const p of P){
+        const n=p.s.filter(x=>iso2d(x[0])<=d).length;
+        if(n>=1)seen++;
+        if(n>=REP_TARGET)done2++;
+      }
+      return {d,seen,done2};
+    });
+  })();
+
   const marks=CFG.milestones.map(iso2d).filter(d=>dayDiff(d,TODAY)>0);
   const shown=marks.slice(-2);              // the milestones the table also lists
   const endD=(()=>{let m=TODAY;for(const r of [PLAN,MINE]){const d=finish(r[0],r[1]);
@@ -634,7 +664,7 @@ function stack(box, counts, total){
   const trPlan=walk(PLAN[0],PLAN[1],WK), trMine=walk(MINE[0],MINE[1],WK);
 
   const W=620,H=250,M={t:18,r:128,b:30,l:32};
-  const X=d=>M.l+(W-M.l-M.r)*dayDiff(d,TODAY)/dayDiff(endD,TODAY);
+  const X=d=>M.l+(W-M.l-M.r)*dayDiff(d,START)/dayDiff(endD,START);
   const Xw=w=>X(addDays(TODAY,w*7));
   const Y=v=>M.t+(H-M.t-M.b)*(1-v/N);
   const g=document.getElementById('chart');
@@ -645,15 +675,31 @@ function stack(box, counts, total){
     g.append(sv('line',{class:'gl',x1:M.l,x2:W-M.r,y1:Y(v),y2:Y(v)}),
              sv('text',{class:'tk',x:M.l-7,y:Y(v)+3.5,'text-anchor':'end'},String(v)));
   }
+  // Gridlines for every milestone, but a label only where one fits: the axis now
+  // spans the past too, so dated ticks sit close enough to overprint each other.
+  let lastTk=X(TODAY)+18;
   for(const d of marks){
     if(d>endD) continue;
-    g.append(sv('line',{class:'gl',x1:X(d),x2:X(d),y1:M.t,y2:Y(0)}),
-             sv('text',{class:'tk',x:X(d),y:H-M.b+15,'text-anchor':'middle'},
+    g.append(sv('line',{class:'gl',x1:X(d),x2:X(d),y1:M.t,y2:Y(0)}));
+    if(X(d)-lastTk<46) continue;
+    lastTk=X(d);
+    g.append(sv('text',{class:'tk',x:X(d),y:H-M.b+15,'text-anchor':'middle'},
                 `${fmtShort(d)} ${String(d.getUTCFullYear()).slice(2)}`));
   }
-  g.append(sv('text',{class:'tk',x:M.l,y:H-M.b+15,'text-anchor':'middle'},'today'));
+  // the measured past, shaded, with day one on the left edge
+  g.append(sv('rect',{x:M.l,y:M.t,width:X(TODAY)-M.l,height:Y(0)-M.t,
+                      fill:'var(--ink)',opacity:.04}));
+  g.append(sv('line',{x1:X(TODAY),x2:X(TODAY),y1:M.t,y2:Y(0),stroke:'var(--muted)',
+                      'stroke-width':1,'stroke-dasharray':'3 3'}));
+  g.append(sv('text',{class:'tk',x:M.l,y:H-M.b+15,'text-anchor':'start'},
+               `${fmtShort(START)} ${String(START.getUTCFullYear()).slice(2)}`),
+           sv('text',{class:'tk',x:X(TODAY),y:H-M.b+15,'text-anchor':'middle'},'today'));
 
   const path=(tr,key)=>tr.map((r,i)=>(i?'L':'M')+Xw(r.w).toFixed(1)+' '+Y(r[key]).toFixed(1)).join(' ');
+  const hpath=key=>hist.map((r,i)=>(i?'L':'M')+X(r.d).toFixed(1)+' '+Y(r[key]).toFixed(1)).join(' ');
+  for(const [key,col] of SERIES)
+    g.append(sv('path',{d:hpath(key),fill:'none',stroke:col,'stroke-width':2.5,
+      'stroke-linejoin':'round','stroke-linecap':'round'}));
   for(const [key,col] of SERIES){
     g.append(sv('path',{d:path(trMine,key),fill:'none',stroke:col,'stroke-width':2,
       'stroke-dasharray':'2 4','stroke-linecap':'round',opacity:.8}));
@@ -683,9 +729,13 @@ function stack(box, counts, total){
   document.getElementById('leg').innerHTML =
       SERIES.map(([,col,lab])=>`<span><i style="background:${col}"></i>solved ${lab}</span>`).join('')
     + `<span><i style="background:none;height:0;width:18px;`
-    + `border-top:2px solid var(--muted)"></i>your plan</span>`
+    + `border-top:2px solid var(--muted)"></i>what happened, then your plan</span>`
     + `<span><i style="background:none;height:0;width:18px;`
     + `border-top:2px dotted var(--muted)"></i>your pace so far</span>`;
+
+  document.getElementById('since').innerHTML =
+      `Day <b>${dayDiff(TODAY,START)+1}</b>. You started <b>${fmtLong(START)}</b>, `
+    + `<b>${fmtDur(START,TODAY)}</b> ago.`;
 
   /* hover: read any week off the chart */
   const tip=document.getElementById('tip');
@@ -694,11 +744,20 @@ function stack(box, counts, total){
   hit.addEventListener('mousemove',e=>{
     const bb=g.getBoundingClientRect();
     const px=(e.clientX-bb.left)/bb.width*W;
-    const w=Math.max(0,Math.min(WK,Math.round((px-M.l)/((W-M.l-M.r)/WK))));
-    const a=trPlan[w], b=trMine[Math.min(w,trMine.length-1)];
-    tip.innerHTML=`<b>${fmtLong(addDays(TODAY,w*7))}</b>`
-      + `plan &nbsp;${SERIES.map(([k,,lab])=>`${Math.round(a[k])} ${lab}`).join(' · ')}<br>`
-      + `yours ${SERIES.map(([k,,lab])=>`${Math.round(b[k])} ${lab}`).join(' · ')}`;
+    const frac=Math.max(0,Math.min(1,(px-M.l)/(W-M.l-M.r)));
+    const d=addDays(START,Math.round(frac*dayDiff(endD,START)));
+    if(d<=TODAY){                       // in the shaded half, report the record
+      const r=hist.reduce((a,b)=>
+        Math.abs(dayDiff(b.d,d))<Math.abs(dayDiff(a.d,d))?b:a);
+      tip.innerHTML=`<b>${fmtLong(r.d)} · ${fmtDur(START,r.d)} in</b>`
+        + `actual ${SERIES.map(([k,,lab])=>`${r[k]} ${lab}`).join(' · ')}`;
+    }else{
+      const w=Math.max(0,Math.min(WK,Math.round(dayDiff(d,TODAY)/7)));
+      const a=trPlan[w], b=trMine[Math.min(w,trMine.length-1)];
+      tip.innerHTML=`<b>${fmtLong(addDays(TODAY,w*7))} · ${fmtDur(START,addDays(TODAY,w*7))} in</b>`
+        + `plan &nbsp;${SERIES.map(([k,,lab])=>`${Math.round(a[k])} ${lab}`).join(' · ')}<br>`
+        + `yours ${SERIES.map(([k,,lab])=>`${Math.round(b[k])} ${lab}`).join(' · ')}`;
+    }
     tip.style.opacity=1;
     const r=tip.getBoundingClientRect();
     tip.style.left=Math.min(e.clientX+14,innerWidth-r.width-8)+'px';
@@ -706,15 +765,19 @@ function stack(box, counts, total){
   });
   hit.addEventListener('mouseleave',()=>tip.style.opacity=0);
 
-  const fin=rate=>{const d=finish(rate[0],rate[1]);return d?fmtLong(d):'—';};
+  // a finish date on its own is hard to feel; the wait next to it is not
+  const fin=(rate,key)=>{const d=finish(rate[0],rate[1],key);
+    return d?`${fmtLong(d)}<span class="dur">${fmtDur(TODAY,d)} from today</span>`:'—';};
   const at=(rate,d)=>{const r=project(rate[0],rate[1],dayDiff(d,TODAY)/7);
     return `${r.seen} / ${r.done2}`;};
   document.getElementById('fin').innerHTML =
     '<tr><th class="l"></th>'
     + shown.map(d=>`<th>${fmtShort(d)} ${d.getUTCFullYear()}</th>`).join('')
-    + `<th>all ${N} ${SERIES[1][2]}</th></tr>`
-    + row('plan',['Your plan', ...shown.map(d=>at(PLAN,d)), fin(PLAN)])
-    + row('mine',['Your pace so far', ...shown.map(d=>at(MINE,d)), fin(MINE)]);
+    + SERIES.map(([,,lab])=>`<th>all ${N} ${lab}</th>`).join('') + '</tr>'
+    + row('plan',['Your plan', ...shown.map(d=>at(PLAN,d)),
+                  ...SERIES.map(([k])=>fin(PLAN,k))])
+    + row('mine',['Your pace so far', ...shown.map(d=>at(MINE,d)),
+                  ...SERIES.map(([k])=>fin(MINE,k))]);
 
 }
 </script>

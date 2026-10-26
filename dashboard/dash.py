@@ -35,6 +35,8 @@ from collections import defaultdict
 
 REP_TARGET = 2                      # sittings per problem that counts as "done"
 UNIVERSE = "nc250"                  # nc250 | nc150 | blind75
+SKIP_DIFFICULTY = {"Hard"}          # left out of the universe: 250 - 35 hard
+SKIP_PATTERNS = {"Bit Manipulation"}  # - 10 bit manipulation = 205 problems, 410 solves
 LADDER = [10, 30, 90]               # days until the next rep, by rep index
 STRUGGLE_SUBS = 3                   # submissions in one session that means "shaky"
 MIN_GAP_DAYS = 2                    # a redo sooner than this is the same solve, not a new one
@@ -181,7 +183,9 @@ def build(today):
         print(f"note: {len(unknown)} solved slug(s) not in catalog: {', '.join(unknown[:5])}",
               file=sys.stderr)
 
-    universe = [c for c in cat.values() if c.get(UNIVERSE)]
+    universe = [c for c in cat.values() if c.get(UNIVERSE)
+                and c["difficulty"] not in SKIP_DIFFICULTY
+                and c["pattern"] not in SKIP_PATTERNS]
     universe.sort(key=lambda c: (c["pattern"], c["problem"]))
 
     problems = []

@@ -40,6 +40,8 @@ Constants at the top of `dash.py`:
 |---|---|---|
 | `REP_TARGET` | `2` | spaced solves per problem that counts as done |
 | `UNIVERSE` | `"nc250"` | also accepts `"nc150"` or `"blind75"` |
+| `SKIP_DIFFICULTY` | `{"Hard"}` | difficulties left out of the universe |
+| `SKIP_PATTERNS` | `{"Bit Manipulation"}` | patterns left out — with Hard, the NC250 target is 205 problems |
 | `MIN_GAP_DAYS` | `2` | a redo sooner than this is the same solve |
 | `LADDER` | `[10, 30, 90]` | days until the next solve is due |
 | `WEEKDAY_NEW` | `2` | Mon–Fri: new problems per day, one pattern at a time |
